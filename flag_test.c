@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <CUnit/CUnit.h>
+#include <CUnit/Basic.h>
 
 #include "flag.h"
 
@@ -50,6 +51,20 @@ static void test()
 
 int main()
 {
-	test();
-	puts("== tests complete ==");
+	CU_ErrorCode err = CU_initialize_registry();
+	if (err) {
+		perror("error inititalizing test registry");
+		return EXIT_FAILURE;
+	}
+	CU_pSuite suite = CU_add_suite("flag_test", NULL, NULL);
+	CU_ADD_TEST(suite, test);
+
+	err = CU_basic_run_tests();
+	if (err) {
+		perror("error running tests");
+		return EXIT_FAILURE;
+	}
+
+	CU_cleanup_registry();
+	return EXIT_SUCCESS;
 }

@@ -1,20 +1,17 @@
-DBGFLAGS = -Wall -Wextra -std=c17 -pedantic -Og -fsanitize=address -fno-omit-frame-pointer
+DBGFLAGS = -Wall -Wextra -std=c11 -pedantic -Og -fsanitize=address -fno-omit-frame-pointer
 RLSFLAGS = -O2
-CFLAGS = $(DBGFLAGS)
-SRCS = flag.c
-OBJS = $(SRCS: .c=.o)
+CC_FLAGS = $(DBGFLAGS)
 
-%.o: %.c %.h
-	$(CC) $(CFLAGS) -c -o $@ $<
+flag.o: flag.c flag.h
+	$(CC) $(CC_FLAGS) -o flag.o flag.c
 
-test: flag_test.c $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+test: flag_test.c flag.h flag.o
+	$(CC) $(CC_FLAGS) -o test flag_test.c flag.o
 
 .PHONY: run_test
 run_test: test
 	./test
-	rm test
 
 .PHONY: clean
 clean:
-	rm $(OBJS)
+	rm -fv *.o test
