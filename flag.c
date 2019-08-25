@@ -78,7 +78,7 @@ static void flag_print_defaults(Flagset *fset)
 
 		char buf[p->size]; // VLA
 		p->parseFunc(fset, buf, p->size, p->defValue, NULL);
-		if (!zero(buf, p->size)) {
+		if (!zero(buf, p->size)) { // maybe use sentinel in buf like '\0'
 			printf("\t");
 			print_flag_description(p->desc);
 			printf(" (default: %s)\n", p->defValue);
@@ -107,7 +107,7 @@ static void flag_register(
 	void       *val,
 	size_t     size,
 	void       (*parse_func)(Flagset *, void *, size_t, const char *, void (*)(Flagset *, const char *)),
-	void       (*dsiplay_func)(void *, size_t, char[static 100]),
+	bool       (*dsiplay_func)(void *, size_t, char[static 100]),
 	const char *name,
 	const char *desc,
 	bool       bool_flag)
@@ -147,13 +147,13 @@ static void flag_parse_bool(Flagset *fs, void *val, size_t _, const char *inp, v
 {
 	bool *b = val;
 	if (
-		!strcmp(inp, "true") == 0 || // test case insensitive
-		!strcmp(inp, "1") == 0
+		!strcmp(inp, "true") || // test case insensitive
+		!strcmp(inp, "1")
 	)
 		*b = true;
 	else if (
-		!strcmp(inp, "false") == 0 ||
-		!strcmp(inp, "0") == 0
+		!strcmp(inp, "false") ||
+		!strcmp(inp, "0")
 	)
 		*b = false;
 	else
@@ -188,33 +188,38 @@ static void flag_parse_string(Flagset *fs, void *val, size_t len, const char *in
 }
 
 
-static void flag_display_bool(void *val, size_t _, char buf[static 100])
+static bool flag_display_bool(void *val, size_t _, char buf[static 100])
 {
 	bool b = *(bool *)val;
 	if (b)
 		strcpy(buf, "true");
 	else
 		strcpy(buf, "false");
+	return false;
 }
 
-static void flag_display_int(void *val, size_t _, char buf[static 100])
+static bool flag_display_int(void *val, size_t _, char buf[static 100])
 {
 	snprintf(buf, 99, "%d", *(int *)val);
+	return false;
 }
 
-static void flag_display_long(void *val, size_t _, char buf[static 100])
+static bool flag_display_long(void *val, size_t _, char buf[static 100])
 {
 	snprintf(buf, 99, "%lld", *(long long *)val);
+	return false;
 }
 
-static void flag_display_double(void *val, size_t _, char buf[static 100])
+static bool flag_display_double(void *val, size_t _, char buf[static 100])
 {
 	snprintf(buf, 99, "%f", *(double *)val);
+	return false;
 }
 
-static void flag_display_string(void *val, size_t _, char buf[static 100])
+static bool flag_display_string(void *val, size_t _, char buf[static 100])
 {
 	snprintf(buf, 99, "%s", (char *)val);
+	return false;
 }
 
 
@@ -248,7 +253,7 @@ void flag_var(
 	void       *var,
 	size_t     size,
 	void       (*setter)(Flagset *, void *, size_t, const char *, void (*)(Flagset *, const char *)),
-	void       (*getter)(void *, size_t, char[static 100]),
+	bool       (*getter)(void *, size_t, char[static 100]),
 	const char *name,
 	const char *desc)
 {
@@ -256,11 +261,11 @@ void flag_var(
 }
 
 
-void flag_init(Flagset *fset, size_t cap, const char *desc, void (*ef)(Flagset *, const char *))
+void flag_init(Flagset *fset, size_t cap, const char *desc)
 {
 	fset->parsed = false;
 	fset->description = desc;
-	fset->errFunc = ef ? ef : errfunc;
+	fset->errFunc = errfunc;
 	fset->capacity_ = cap;
 	fset->count_ = 0;
 
@@ -272,17 +277,6 @@ void flag_init(Flagset *fset, size_t cap, const char *desc, void (*ef)(Flagset *
 	} 
 }
 
-// flagparse takes as arguments the command-line arguments and
-// unmarshals them into the defined flags.
-// If 'h' or 'help' is given the program will exit.
-//
-// change flagparsing so that only consecutive flags are searched
-// example:
-//         ./cmd -bool -str abcde -t 12:47 non-flag other -flag 28
-//                                                        ~~~~~~~~
-//                                                 don't take this into account
-//
-// add - and -- as parse stoppers
 enum FlagErr flag_parse(Flagset *fset, size_t argc, const char **args)
 {
 	if (fset->parsed)
@@ -369,7 +363,6 @@ enum FlagErr flag_parse(Flagset *fset, size_t argc, const char **args)
 	return FlagOK;
 }
 
-// converts the enum to its string, does not need to be freed, not writeable
 const char *flag_err_str(enum FlagErr fe)
 {
 	switch (fe) {
@@ -386,3 +379,9 @@ const char *flag_err_str(enum FlagErr fe)
 		exit(3);
 	}
 }
+
+// exported for testing purposes only
+bool (*flag_test_zero)(void *, size_t) = zero;
+void (*flag_test_extract_type_name)(const char *, char *restrict, size_t) = extract_type_name;
+void (*flag_test_parse_bool)(Flagset *, void *, size_t, const char *, void (*)(Flagset *, const char *)) = flag_parse_bool;
+bool (*flag_test_display_bool)(void *, size_t, char[static 100]) = flag_display_bool;
