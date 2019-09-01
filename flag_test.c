@@ -9,16 +9,19 @@
 #define FLAG_TEST
 #include "flag.h"
 
+#define ARRAY_LEN(array) (sizeof(array)/sizeof(array[0]))
+#define STR_BOOL(b) ((b) ? "true" : "false")
+
 static void zero_test()
 {
-	int i = 0, j = 1, k = -1;
-	CU_ASSERT_TRUE(flag_test_zero(&i, sizeof(i)));
-	CU_ASSERT_FALSE(flag_test_zero(&j, sizeof(j)));
-	CU_ASSERT_FALSE(flag_test_zero(&k, sizeof(k)));
-
 	bool b = true, c = false;
 	CU_ASSERT_FALSE(flag_test_zero(&b, sizeof(b)));
 	CU_ASSERT_TRUE(flag_test_zero(&c, sizeof(c)));
+
+	long i = 0, j = 1, k = -1;
+	CU_ASSERT_TRUE(flag_test_zero(&i, sizeof(i)));
+	CU_ASSERT_FALSE(flag_test_zero(&j, sizeof(j)));
+	CU_ASSERT_FALSE(flag_test_zero(&k, sizeof(k)));
 }
 
 static void extract_test()
@@ -92,6 +95,30 @@ static void str_to_bool()
 	CU_ASSERT_EQUAL(call_ctr, 1);
 }
 
+// experimental table driven tests
+static void str_to_bool_tt()
+{
+	struct {
+		char        inp[20];
+		bool        want;
+		FlagErrFunc assert_func;
+	} tt[] = {
+		{"true", true, assert_err_wrapper},
+		{"false", false, assert_err_wrapper},
+		{"blabla", false, inc_call_ctr},
+	};
+
+	for (size_t i = 0; i < ARRAY_LEN(tt); ++i) {
+		bool got;
+		flag_test_parse_bool(NULL, &got, sizeof(got), tt[i].inp, tt[i].assert_func);
+		if (got != tt[i].want) {
+			CU_FAIL(got tt[i].want);
+			printf("In test %zu: want %s, got %s",
+				i, STR_BOOL(tt[i].want), STR_BOOL(got));
+		}
+	}
+}
+
 static void parse_example()
 {
 	struct Flagset *flags = malloc(FLAGSET_SIZE(5));
@@ -115,17 +142,17 @@ static void parse_example()
 
 	enum FlagErr err = flag_parse(flags, argc, argv);
 
-	CU_ASSERT_FALSE(err); if (err != FlagOK) { printf("got err: %s\n", flag_err_str(err)); return; }
+	CU_ASSERT_EQUAL(err, FlagOK);
 
-	CU_ASSERT_EQUAL(b, true);              if (b != true) printf("b not equal to true, is %s!\n", b ? "true" : "false");
-	CU_ASSERT_EQUAL(i, 123);               if (i != 123) printf("i not equal to 123, is %d!\n", i);
-	CU_ASSERT_EQUAL(l, 5);                 if (l != 5) printf("l not equal to 5, is %lld!\n", l);
-	CU_ASSERT_STRING_EQUAL(port, ":8080"); if (strcmp(port, ":8080")) printf("port not equal to ':8080', is %s!\n", port);
-	CU_ASSERT(flags->parsed);              if (!flags->parsed) puts("flag_parsed should be true");
+	CU_ASSERT_EQUAL(b, true);
+	CU_ASSERT_EQUAL(i, 123);
+	CU_ASSERT_EQUAL(l, 5);
+	CU_ASSERT_STRING_EQUAL(port, ":8080");
+	CU_ASSERT_TRUE(flags->parsed);
 
-	CU_ASSERT_EQUAL(flags->argc, 4);                if (flags->argc != 4) printf("argc should be 4, is %lu\n", flags->argc);
-	CU_ASSERT_STRING_EQUAL(flags->argv[0], "prog"); if (strcmp(flags->argv[0], "prog")) printf("argv[0] should be 'prog', is %s\n", flags->argv[0]);
-	CU_ASSERT_STRING_EQUAL(flags->argv[1], "hi");   if (strcmp(flags->argv[1], "hi")) printf("argv[1] should be 'hi', is %s\n", flags->argv[1]);
+	CU_ASSERT_EQUAL(flags->argc, 4);
+	CU_ASSERT_STRING_EQUAL(flags->argv[0], "prog");
+	CU_ASSERT_STRING_EQUAL(flags->argv[1], "hi");
 
 	free(flags);
 }

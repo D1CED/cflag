@@ -31,20 +31,22 @@ struct Flag_;
 // Use this to calculate the size of a buffer to store a flag set.
 #define FLAGSET_SIZE(l) (sizeof(struct Flagset) + (l) * sizeof(struct Flag_))
 
+// size macros
+#define FLAG_DEF_VAL_SIZE_ 100
+#define FLAGSET_ARGV_SIZE_ 100
+
+typedef void (*FlagErrFunc)(struct Flagset *, const char *);
+typedef void (*FlagTypeParserFunc)(struct Flagset *, void *, size_t, const char *, FlagErrFunc);
+typedef bool (*FlagTypeDisplayFunc)(void *, size_t, char[static FLAG_DEF_VAL_SIZE_]);
+
 struct Flag_ {
 	void   *value;
 	size_t size;
-	void (*parseFunc)(
-		struct Flagset *,
-		void *,
-		size_t,
-		const char *,
-		void (*)(struct Flagset *, const char *)
-	);
-	bool       (*displayFunc)(void *, size_t, char[static 100]);
+	FlagTypeParserFunc  parseFunc;
+	FlagTypeDisplayFunc displayFunc;
 	bool       boolFlag;
 	char       typeName[30];
-	char       defValue[100];
+	char       defValue[FLAG_DEF_VAL_SIZE_];
 	const char *name;
 	const char *desc;
 };
@@ -56,10 +58,10 @@ struct Flagset {
 	// a description for your application usage.
 	const char *description;
 	// an error callback. You can create your own. A default is set in init.
-	void (*errFunc)(struct Flagset *, const char *);
+	FlagErrFunc errFunc;
 	// contains the rest of the args after parse.
 	size_t     argc;
-	const char *argv[100];
+	const char *argv[FLAGSET_ARGV_SIZE_];
 	// private
 	size_t       capacity_;
 	size_t       count_;
@@ -67,7 +69,7 @@ struct Flagset {
 };
 
 enum FlagErr {
-	FlagOK = 0,
+	FlagOK,
 	// ErrFlagNoArg is returned by flag_parse if a known non-bool flag
 	// is not provided an argument.
 	ErrFlagNoArg,
@@ -94,12 +96,11 @@ void flag_var(
 	size_t,
 	// a function creating the type from a string. The provided function can
 	// be called as an error callback.
-	void (*)(struct Flagset *, void *, size_t, const char *, void (*)(struct Flagset *, const char *)),
+	FlagTypeParserFunc,
 	// a function converting the type to a string
-	bool (*)(void *, size_t, char[100]),
+	FlagTypeDisplayFunc,
 	const char *,
-	const char *
-);
+	const char *);
 
 // initializes a Flagset. Make sure enough space is allocated to hold at lease
 // n flags with it.
@@ -121,8 +122,8 @@ enum FlagErr flag_parse(struct Flagset *, size_t argc, const char **argv);
 #ifdef FLAG_TEST
 extern bool (*flag_test_zero)(void *, size_t);
 extern void (*flag_test_extract_type_name)(const char *, char *restrict, size_t);
-extern void (*flag_test_parse_bool)(struct Flagset *, void *, size_t, const char *, void (*)(struct Flagset *, const char *));
-extern bool (*flag_test_display_bool)(void *, size_t, char[static 100]);
+extern void (*flag_test_parse_bool)(struct Flagset *, void *, size_t, const char *, FlagErrFunc);
+extern bool (*flag_test_display_bool)(void *, size_t, char[static FLAG_DEF_VAL_SIZE_]);
 #endif
 
 #endif

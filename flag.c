@@ -61,7 +61,7 @@ static void print_flag_description(const char *desc)
 			buf[i-ctr] = desc[i];
 		}
 	}
-	printf(buf);
+	fputs(buf, stdout);
 }
 
 // flagsprint prints all flags and the description
@@ -78,15 +78,13 @@ static void flag_print_defaults(Flagset *fset)
 
 		char buf[p->size]; // VLA
 		p->parseFunc(fset, buf, p->size, p->defValue, NULL);
-		if (!zero(buf, p->size)) { // maybe use sentinel in buf like '\0'
-			printf("\t");
-			print_flag_description(p->desc);
-			printf(" (default: %s)\n", p->defValue);
-		} else {
-			printf("\t");
-			print_flag_description(p->desc);
-			printf("\n");
-		}
+
+		// use the returned bool value instead of zero check
+		printf("\t");
+		print_flag_description(p->desc);
+		if (!zero(buf, p->size)) // maybe use sentinel in buf like '\0'
+			printf(" (default: %s)", p->defValue);
+		printf("\n");
 	}
 	if (fset->description)
 		printf("\nDescription:\n%s\n", fset->description);
@@ -103,14 +101,14 @@ static void errfunc(Flagset *fs, const char* c)
 // flaginit allocates space for flags and checks for duplicate entries.
 // maybe add type name
 static void flag_register(
-	Flagset    *fset,
-	void       *val,
-	size_t     size,
-	void       (*parse_func)(Flagset *, void *, size_t, const char *, void (*)(Flagset *, const char *)),
-	bool       (*dsiplay_func)(void *, size_t, char[static 100]),
-	const char *name,
-	const char *desc,
-	bool       bool_flag)
+	Flagset             *fset,
+	void                *val,
+	size_t              size,
+	FlagTypeParserFunc  parse_func,
+	FlagTypeDisplayFunc dsiplay_func,
+	const char          *name,
+	const char          *desc,
+	bool                bool_flag)
 {
 	// check for name collision
 	for (size_t i = 0; i < fset->count_; i++) {
@@ -143,7 +141,8 @@ static void flag_register(
 	++fset->count_;
 }
 
-static void flag_parse_bool(Flagset *fs, void *val, size_t _, const char *inp, void (*err_func)(Flagset *, const char *))
+
+static void flag_parse_bool(Flagset *fs, void *val, size_t _, const char *inp, FlagErrFunc err_func)
 {
 	bool *b = val;
 	if (
@@ -160,8 +159,7 @@ static void flag_parse_bool(Flagset *fs, void *val, size_t _, const char *inp, v
 		err_func(fs, "erradic expression for boolean value");
 }
 
-
-static void flag_parse_int(Flagset *fs, void *val, size_t _, const char *inp, void (*err_func)(Flagset *, const char *))
+static void flag_parse_int(Flagset *fs, void *val, size_t _, const char *inp, FlagErrFunc err_func)
 {
 	int *i = val;
 	int j = atoi(inp);
@@ -170,25 +168,25 @@ static void flag_parse_int(Flagset *fs, void *val, size_t _, const char *inp, vo
 	*i = j;
 }
 
-static void flag_parse_long(Flagset *fs, void *val, size_t _, const char *inp, void (*err_func)(Flagset *, const char *))
+static void flag_parse_long(Flagset *fs, void *val, size_t _, const char *inp, FlagErrFunc err_func)
 {
 	long long *l = val;
 	*l = atoll(inp);
 }
 
-static void flag_parse_double(Flagset *fs, void *val, size_t _, const char *inp, void (*err_func)(Flagset *, const char *))
+static void flag_parse_double(Flagset *fs, void *val, size_t _, const char *inp, FlagErrFunc err_func)
 {
 	double *d = val;
 	*d = atof(inp);
 }
 
-static void flag_parse_string(Flagset *fs, void *val, size_t len, const char *inp, void (*err_func)(Flagset *, const char *))
+static void flag_parse_string(Flagset *fs, void *val, size_t len, const char *inp, FlagErrFunc err_func)
 {
 	strncpy(val, inp, len);
 }
 
 
-static bool flag_display_bool(void *val, size_t _, char buf[static 100])
+static bool flag_display_bool(void *val, size_t _, char buf[static FLAG_DEF_VAL_SIZE_])
 {
 	bool b = *(bool *)val;
 	if (b)
@@ -198,27 +196,27 @@ static bool flag_display_bool(void *val, size_t _, char buf[static 100])
 	return false;
 }
 
-static bool flag_display_int(void *val, size_t _, char buf[static 100])
+static bool flag_display_int(void *val, size_t _, char buf[static FLAG_DEF_VAL_SIZE_])
 {
-	snprintf(buf, 99, "%d", *(int *)val);
+	snprintf(buf, FLAG_DEF_VAL_SIZE_-1, "%d", *(int *)val);
 	return false;
 }
 
-static bool flag_display_long(void *val, size_t _, char buf[static 100])
+static bool flag_display_long(void *val, size_t _, char buf[static FLAG_DEF_VAL_SIZE_])
 {
-	snprintf(buf, 99, "%lld", *(long long *)val);
+	snprintf(buf, FLAG_DEF_VAL_SIZE_-1, "%lld", *(long long *)val);
 	return false;
 }
 
-static bool flag_display_double(void *val, size_t _, char buf[static 100])
+static bool flag_display_double(void *val, size_t _, char buf[static FLAG_DEF_VAL_SIZE_])
 {
-	snprintf(buf, 99, "%f", *(double *)val);
+	snprintf(buf, FLAG_DEF_VAL_SIZE_-1, "%f", *(double *)val);
 	return false;
 }
 
-static bool flag_display_string(void *val, size_t _, char buf[static 100])
+static bool flag_display_string(void *val, size_t _, char buf[static FLAG_DEF_VAL_SIZE_])
 {
-	snprintf(buf, 99, "%s", (char *)val);
+	snprintf(buf, FLAG_DEF_VAL_SIZE_-1, "%s", (char *)val);
 	return false;
 }
 
@@ -252,8 +250,8 @@ void flag_var(
 	Flagset    *fset,
 	void       *var,
 	size_t     size,
-	void       (*setter)(Flagset *, void *, size_t, const char *, void (*)(Flagset *, const char *)),
-	bool       (*getter)(void *, size_t, char[static 100]),
+	FlagTypeParserFunc  setter,
+	FlagTypeDisplayFunc getter,
 	const char *name,
 	const char *desc)
 {
@@ -270,8 +268,6 @@ void flag_init(Flagset *fset, size_t cap, const char *desc)
 	fset->count_ = 0;
 
 	for (size_t i = 0; i < cap; ++i) {
-		//memset(fset->_vals[i].typeName, 0, sizeof(((Flag *)0)->typeName));
-		//memset(fset->_vals[i].defValue, 0, sizeof(((Flag *)0)->defValue));
 		fset->vals_[i].typeName[0] = '\0';
 		fset->vals_[i].defValue[0] = '\0';
 	} 
@@ -296,7 +292,7 @@ enum FlagErr flag_parse(Flagset *fset, size_t argc, const char **args)
 		}
 	}
 
-	#define name_cap sizeof(((Flag *)0)->name)
+	#define name_cap sizeof(((Flag *)NULL)->name) // nonononono!!!!11!!
 	size_t i;
 
 	for (i = 1; i < argc; ++i) {
@@ -353,9 +349,9 @@ enum FlagErr flag_parse(Flagset *fset, size_t argc, const char **args)
 	// setup new argc and argv
 	fset->parsed = true;
 	fset->argc = argc - i + 1;
-	if (fset->argc > 100) {
+	if (fset->argc > FLAGSET_ARGV_SIZE_) {
 		perror("That's a lot of flags. Aborting!");
-		exit(2);
+		exit(1);
 	}
 	for (size_t j = 1; j < fset->argc; ++j)
 		fset->argv[j] = args[j+i-1];
@@ -376,12 +372,12 @@ const char *flag_err_str(enum FlagErr fe)
 		return "ErrFlagUnknown";
 	default:
 		perror("illegal enum member. Aborting!");
-		exit(3);
+		exit(1);
 	}
 }
 
 // exported for testing purposes only
 bool (*flag_test_zero)(void *, size_t) = zero;
 void (*flag_test_extract_type_name)(const char *, char *restrict, size_t) = extract_type_name;
-void (*flag_test_parse_bool)(Flagset *, void *, size_t, const char *, void (*)(Flagset *, const char *)) = flag_parse_bool;
-bool (*flag_test_display_bool)(void *, size_t, char[static 100]) = flag_display_bool;
+void (*flag_test_parse_bool)(Flagset *, void *, size_t, const char *, FlagErrFunc) = flag_parse_bool;
+bool (*flag_test_display_bool)(void *, size_t, char[static FLAG_DEF_VAL_SIZE_]) = flag_display_bool;
